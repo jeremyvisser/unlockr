@@ -1,0 +1,69 @@
+{
+    "devices": {
+        "ewelink": {
+            "my-special-device": {
+                "device_id": "12345678",
+                "name": "My Special Device"
+            },
+            "multi-headed-hydra-outlet0": {
+                "device_id": "87654321",
+                "outlet": 0,
+                "name": "Multi-Headed Hydra (Outlet 0)"
+            },
+            "multi-headed-hydra-outlet1": {
+                "device_id": "87654321",
+                "outlet": 1,
+                "name": "Multi-Headed Hydra (Outlet 1)"
+            }
+        },
+        "noop": {
+            "testing-device": {
+                "name": "Do-Nothing Machine"
+            }
+        }
+    },
+    "datastore": {
+        "COMMENT": "remove (disabled) from the datastore you want",
+        "file": {
+            "path": "users.json"
+        },
+        "db (disabled)": {
+            "driver": "mysql",
+            "dsn": "user:password@/dbname",
+            "queries": {
+                "user": "SELECT username, password_hash, nickname FROM users WHERE username = ?",
+                "groupmemberships": "SELECT group_name FROM group_memberships WHERE username = ?",
+                "session": "SELECT username, expiry, extra FROM sessions WHERE id = ? AND expiry > UNIX_TIMESTAMP(NOW())",
+                "sessionclean": "DELETE FROM sessions WHERE expiry < UNIX_TIMESTAMP(NOW()) LIMIT 100",
+                "sessionsave": "INSERT INTO sessions (id, username, expiry, extra) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE expiry = VALUES(expiry), extra = VALUES(extra)"
+            }
+        }
+    },
+    "credentials": {
+        "ewelink": {
+            "email": "",
+            "password": "",
+            "region": "",
+            "countryCode": "+1"
+        }
+    },
+    "auth": {
+        "type": "password"
+    },
+    "auth (disabled)": {
+        "COMMENT": "remove (disabled) from the auth method you want",
+        "type": "oauth",
+        "clientid": "x",
+        "clientsecret": "x",
+        "endpoint": {
+            "authurl": "/oauth/authorize/",
+            "tokenurl": "/oauth/token/"
+        },
+        "redirecturl": "/api/exchange",
+        "postredirecturl": "/",
+        "profile": {
+            "type": "wordpress",
+            "profileurl": "/oauth/me/"
+        }
+    }
+}

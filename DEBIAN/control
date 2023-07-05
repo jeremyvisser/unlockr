@@ -1,0 +1,6 @@
+Package: unlockr
+Version: 1~0test
+Architecture: amd64
+Maintainer: Jeremy Visser <jeremy@visser.name>
+Homepage: https://baygardens.net/
+Description: Door Unlocker utility

@@ -1,0 +1,19 @@
+[Unit]
+Description=Door Unlocker server
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/unlockr \
+    -config=/etc/unlockr/config.json
+
+Restart=on-failure
+
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
+
+MemoryHigh=32M
+MemoryMax=64M
+
+[Install]
+WantedBy=multi-user.target

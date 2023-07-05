@@ -1,0 +1,14 @@
+{
+    "users": {
+        "alice": {
+            "nickname": "Alice Montague",
+            "password_hash": "$2a$10$ZezXYWSQtwmLMtCR4tYC9.FX7cKlpJH62yHH9UgVa7QSrEMF8yG1u",
+            "groups": ["montagues"]
+        },
+        "bob": {
+            "nickname": "Bob Capulet",
+            "password_hash": "$2a$10$.cmgmatB8ZhxWYun.Q9pX.KzMdy1o6W5fjy.l.of.SzTbn6vWNuP6",
+            "groups": ["capulets"]
+        }
+    }
+}

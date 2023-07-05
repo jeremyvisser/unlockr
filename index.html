@@ -1,0 +1,550 @@
+<!doctype html>
+<title>Door Unlocker</title>
+<link rel="icon" type="image/svg" href="third_party/favicon.svg">
+<link rel="manifest" href="manifest.json">
+<meta name="viewport" content="width=device-width" />
+<style>
+    body, html {
+        margin: 0;
+        padding: 0;
+    }
+    body {
+        color: black;
+        background: white;
+        font: 16pt "Futura Std Book", Futura, system-ui, sans-serif;
+    }
+    a {
+        color: #9bf;
+    }
+</style>
+
+
+<app-controller></app-controller>
+
+<script type="module">
+window.litDisableBundleWarning = true;
+</script>
+<script type="module">
+import {html, css, map, until, LitElement} from "./third_party/lit-all.min.js";
+
+const OAuthLoginURL = "api/login";
+const ErrAuthNeedsRedirect = new Error("OAuth redirect required");
+const ErrAuthNeedsPassword = new Error("Password authentication required");
+
+const sharedStyles = css`
+    label, input, button {
+        display: block;
+        font-size: 1em;
+    }
+    button {
+        padding: 0.2em 0.5em;
+        border: 2px solid rebeccapurple;
+        border-radius: 0.5em 0 0.5em 0;
+        background: rgba(66,33,99,0.2);
+
+        box-shadow: rgba(0,0,0,0.2) 0.2em 0.2em;
+
+        transition: 0.2s box-shadow,
+                    0.2s transform,
+                    0.1s border-color,
+                    0.5s background-color;
+    }
+    button:active {
+        transform: translate(0.1em, 0.1em);
+        box-shadow: rgba(0,0,0,0.2) 0 0;
+    }
+`;
+
+async function retry(callback, {retries = 3, delayMsec = 1000} = {}) {
+    try {
+        return await callback();
+    } catch (err) {
+        if (retries > 0) {
+            console.warn(`failed, but retrying in ${delayMsec}ms`, err);
+            await new Promise((r) => setTimeout(r, delayMsec));
+            return retry(callback, {
+                retries: retries-1,
+                delayMsec: delayMsec*2,
+            });
+        }
+        throw err;
+    }
+}
+
+async function sleep(msec) {
+    return new Promise((r) => setTimeout(r, msec));
+}
+
+class UserState {
+    user = undefined;
+    devices = undefined;
+
+    _syncing = false; // mutex-ish
+
+    _host;
+
+    constructor({host}) {
+        this._host = host;
+        host.addController(this);
+    }
+
+    name() {
+        return this.user?.nickname
+            ?  this.user?.nickname
+            :  this.user?.username;
+    }
+
+    async newLogin({username, password}) {
+        await fetch("api/login", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({username, password}),
+        }).then(async (response) => {
+            if (!response.ok) {
+                throw new Error(await response.text());
+            }
+        });
+        return this.maybeSync();
+    }
+
+    needSync() {
+        return !this.user || !this.devices;
+    }
+
+    async maybeSync() {
+        if (!this.needSync()) {
+            return;
+        }
+
+        if (!this._syncing) {
+            this._syncing = retry(() =>
+                fetch("api/index", {redirect: "manual"}).then(async (response) => {
+                    if (response.ok || response.status == 401 || response.type == "opaqueredirect") {
+                        return response; // permanent, don't retry
+                    }
+                    throw new Error(await response.text());
+                })
+            ).then(async (response) => {
+                if (response.type == "opaqueredirect") {
+                    // Server wants to redirect us (OAuth), but the destination is invisible to us.
+                    // We must follow the redirect at the window-level, not fetch-level:
+                    throw ErrAuthNeedsRedirect;
+                }
+                if (response.status == 401) {
+                    throw ErrAuthNeedsPassword;
+                }
+                if (response.ok) {
+                    return response.json();
+                }
+                throw new Error(await response.text());
+            }).then(async (newState) => {
+                this.user = newState.user;
+                this.devices = new Map;
+                for (const [id, d] of Object.entries(newState.devices)) {
+                    this.devices.set(id, new Device({
+                        id,
+                        name: d.name,
+                    }));
+                }
+                this._host?.requestUpdate();
+            }).catch((err) => {
+                this.user = undefined;
+                this.devices = undefined;
+                this._host?.requestUpdate();
+                throw err;
+            }).finally(() => {
+                this._syncing = false;
+            });
+        }
+        return this._syncing;
+    }
+}
+
+class Device {
+    id;
+    name;
+
+    constructor({id, name}) {
+        this.id = id;
+        this.name = name;
+    }
+
+    async power(on) {
+        let onoff = on
+            ? "on"
+            : "off";
+        return fetch(`api/device/${this.id}/power/${onoff}`, {method: "POST"})
+            .then(async (response) => {
+                if (!response.ok) {
+                    throw new Error(await response.text());
+                }
+            });
+    }
+}
+
+class Toast extends CustomEvent {
+    constructor(message) {
+        super("toast", {
+            detail:     {message},
+            bubbles:    true,
+            composed:   true,
+            cancelable: false,
+        });
+    }
+}
+
+const toast = (thisObj, message) =>
+    thisObj.dispatchEvent(new Toast(message));
+
+class ToastList extends LitElement {
+    static properties = {
+        ttlMsec: {type: Number},
+    };
+
+    static styles = css`
+        :host {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+        }
+    `;
+
+    constructor() {
+        super();
+        this.ttlMsec = 10000;
+    }
+
+    toast(message) {
+        const t = new ToastMessage;
+        t.message = message.message
+            ? message.message // "Error:" prefix stripped
+            : message; // Normal string
+        t.ttlMsec = this.ttlMsec;
+        this.renderRoot.appendChild(t);
+        console.log("Toast:", t.message);
+    }
+}
+customElements.define("toast-list", ToastList);
+
+class ToastMessage extends LitElement {
+    static properties = {
+        message: {type: String},
+        ttlMsec: {type: Number},
+    };
+
+    static styles = css`
+        :host {
+            display: block;
+            color: black;
+            background: lightgrey;
+
+            border-radius: 1em;
+            box-shadow: rgba(0,0,0,0.7) 0 0.1em 0.5em;
+            margin: 1em;
+            padding: 0.2em 0.5em;
+
+            animation: 10s 1 toast-appear;
+            transition: 1s top;
+        }
+        @keyframes toast-appear {
+            from {
+                opacity: 0;
+                background: lightcoral;
+            }
+            10% {
+                opacity: 1;
+                background: lightcoral;
+            }
+            20%, 90% {
+                opacity: 1;
+                background: lightgrey;
+            }
+            to {
+                opacity: 0;
+            }
+        }
+    `;
+
+    constructor() {
+        super();
+        this.ttlMsec = 10000;
+    }
+
+    connectedCallback() {
+        super.connectedCallback();
+        setTimeout(() => this.remove(), this.ttlMsec);
+        this.addEventListener("click", this.remove);
+    }
+
+    render() {
+        return this.message;
+    }
+}
+customElements.define("toast-message", ToastMessage);
+
+class HeaderBar extends LitElement {
+    static properties = {
+        user: {type: String},
+    };
+
+    static styles = css`
+        :host {
+            display: block;
+            font-size: 0.7em;
+            padding: 0.3em;
+            border-bottom: 1px solid #aaa;
+            contain: layout;
+        }
+        h1, .user {
+            margin: 1em;
+        }
+        h1 {
+            font: inherit;
+            text-transform: uppercase;
+            float: left;
+        }
+        .user {
+            float: right;
+        }
+    `;
+
+    render() {
+        return html`
+            <h1>Door Unlocker</h1>
+            <div class="user">${this.user}</div>
+        `;
+    }
+}
+customElements.define("header-bar", HeaderBar);
+
+class LoginForm extends LitElement {
+    static properties = {
+        userState: {type: Object},
+    };
+
+    static styles = [
+        sharedStyles,
+        css`
+        :host {
+            display: block;
+            margin: 1em;
+        }`
+    ];
+
+    async submit(event) {
+        event.preventDefault(); // ensure form is handled by JS
+        try {
+            await this.userState.newLogin({
+                username: event.target.username.value,
+                password: event.target.password.value
+            });
+        } catch (err) {
+            toast(this, err);
+            console.error(err);
+        }
+    }
+
+    render() {
+        return html`
+            <form id="loginForm" @submit=${this.submit}>
+                <p>
+                    <label>
+                        Username:
+                        <input type="text" name="username" value=${this.userState?.user?.username} />
+                    </label>
+                </p>
+                <p>
+                    <label>
+                        Password:
+                        <input type="password" name="password" />
+                    </label>
+                </p>
+                <p>
+                    <button name="loginbtn">
+                        Login
+                    </button>
+                </p>
+            </form>
+        `;
+    }
+}
+customElements.define("login-form", LoginForm);
+
+class DeviceControl extends LitElement {
+    static properties = {
+        device: {type: Object},
+    };
+
+    static styles = [
+        sharedStyles,
+        css`
+        :host {
+            display: block;
+            contain: content;
+            padding: 1em;
+            border-bottom: 1px solid #aaa;
+        }
+        label {
+            display: block;
+        }
+        button {
+            float: right;
+        }
+        :host(.opened) button {
+            background-color: #cfc;
+            border-color: #4d4;
+        }
+        :host(.opened) button:disabled {
+            color: inherit;
+        }`
+    ];
+
+    constructor() {
+        super();
+    }
+
+    async power(event) {
+        const btn = event.target;
+        btn.disabled = true;
+        return this.device.power(true).then(async () => {
+                this.className = "opened";
+                await sleep(5000);
+                this.className = "";
+            }).catch((err) =>
+                toast(this, err)
+            ).finally(() => btn.disabled = false);
+    }
+
+    render() {
+        return html`
+            <label>
+                ${this.device.name}
+                <button @click=${this.power}>
+                    ${this.className == "opened"
+                        ? "Opened"
+                        : "Open"}
+                </button>
+            </label>
+        `;
+    }
+}
+customElements.define("device-control", DeviceControl);
+
+class DashboardView extends LitElement {
+    static properties = {
+        devices: {type: Map},
+    }
+
+    static styles = css`
+        :host {
+            display: block;
+            margin: 1em;
+        }
+
+        .loading {
+            display: block;
+            margin: 2em;
+            text-align: center;
+        }
+    `;
+
+    render() {
+        return map(this.devices, ([id, d]) =>
+            html`<device-control .device=${d}></device-control>`
+        );
+    }
+}
+customElements.define("dashboard-view", DashboardView);
+
+class AppController extends LitElement {
+    static styles = [
+        sharedStyles,
+        css`
+        :host {
+            display: block;
+            cursor: default;
+        }
+        .loading, .error {
+            display: block;
+            margin: 2em;
+            text-align: center;
+        }
+        .error {
+            padding: 2em;
+            background: rgba(255,0,0,0.1);
+            border-radius: 1em;
+        }
+        .error button {
+            float: right;
+        }`
+    ];
+
+    userState = new UserState({host: this});
+    toaster = new ToastList;
+
+    async connectedCallback() {
+        super.connectedCallback();
+        
+        this.addEventListener("toast",
+            (event) => this.toaster.toast(event.detail.message)
+        );
+    }
+
+    async renderMain() {
+        return this.userState.maybeSync().then(
+            // Success, and logged in:
+            () => html`<dashboard-view .devices=${this.userState.devices}></dashboard-view>`,
+            // Fail:
+            (err) => {
+                switch (err) {
+                    case ErrAuthNeedsRedirect:
+                        window.location.replace(OAuthLoginURL);
+                        return html`<div class="loading">Logging in...</div>`;
+                    case ErrAuthNeedsPassword:
+                        return html`<login-form .userState=${this.userState}></login-form>`;
+                    default:
+                        console.error(err);    
+                        return html`
+                            <div class="error">
+                                <button @click=${() => window.location.reload()}>Reload</button>
+                                ${err.message}
+                            </div>`;
+                }
+            }
+        ).catch((err) => this.toaster.toast(err));
+    }
+
+    render() {
+        return html`
+            <header-bar user=${this.userState?.name()}></header-bar>
+            ${until(
+                this.renderMain(),
+                html`<div class="loading">Loading…</div>`
+            )}
+
+            ${this.toaster}
+        `;
+    }
+}
+customElements.define("app-controller", AppController);
+
+// WindowReloader reloads the page if it is too old when the user returns to it.
+// This is not about cache busting, rather it is about inducing revalidation.
+class WindowReloader {
+    reloadIntervalMsec = 4 * 60 * 60 * 1000; // 4 hours
+    afterMsec = Date.now() + this.reloadIntervalMsec;
+
+    maybeReload() {
+        if (Date.now() < this.afterMsec) {
+            return;
+        }
+        this.afterMsec += this.reloadIntervalMsec;
+        window.location.reload();
+    }
+}
+{
+    const wr = new WindowReloader;
+    window.addEventListener("focus", () => wr.maybeReload());
+}
+</script>

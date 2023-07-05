@@ -1,0 +1,7 @@
+favicon.png, favicon.svg:
+- SPDX-License-Identifier: Apache-2.0
+- Source: https://fonts.google.com/icons
+
+lit-all.min.js, lit-all.min.js.map:
+- SPDX-License-Identifier: BSD-3-Clause
+- Source: https://lit.dev/
