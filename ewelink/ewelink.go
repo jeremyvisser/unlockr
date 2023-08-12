@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -16,17 +17,6 @@ import (
 
 	"jeremy.visser.name/unlockr/debug"
 	"jeremy.visser.name/unlockr/device"
-)
-
-const (
-	// My creds from dev.ewelink.cc.
-	// Doesn't have access to /user/login, so can't use:
-	// appID     = byte("Y8WTjaSC1PAPw1XCpwwgnV9IfYRchkr8")
-	// appSecret = byte("UcfTadb1WUn2paR6NwZeuvuPg1oqVuK9")
-
-	// Creds from ewelink-api (node.js), which works fine:
-	appID     = "YzfeftUVcZ6twZw1OoVKPRFYTrGEg01Q"
-	appSecret = "4G91qSoboqYO4Y0XJ0LPPKIsq8reHdfa"
 )
 
 type Ewelink struct {
@@ -44,6 +34,10 @@ type Ewelink struct {
 
 	// URL is optional, and is generated based on Region if unset.
 	URL string `json:"-"`
+
+	// AppID and AppSecret must be obtained from dev.ewelink.cc. Required.
+	AppID     string `json:"appid"`
+	AppSecret string `json:"appsecret"`
 
 	// Token is the cached bearer credential.
 	tokens struct {
@@ -151,7 +145,9 @@ func (e *Ewelink) NewPreAuthRequest(ctx context.Context, url string, payload any
 // newRequestInternal is used for constructing a HTTP request including auth headers and JSON payload.
 func (e *Ewelink) newRequestInternal(ctx context.Context, url string, payload any, preauth bool) (*http.Request, error) {
 	var buf *bytes.Buffer = nil
-	var sig string
+	if e.AppID == "" || e.AppSecret == "" {
+		return nil, errors.New("AppID and AppSecret must be set")
+	}
 	method := "GET"
 	if payload != nil {
 		buf = new(bytes.Buffer)
@@ -169,9 +165,9 @@ func (e *Ewelink) newRequestInternal(ctx context.Context, url string, payload an
 		return nil, err
 	}
 	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("x-ck-appid", appID)
+	req.Header.Add("x-ck-appid", e.AppID)
 	if preauth {
-		sig = CalcSignature(buf.Bytes(), []byte(appSecret))
+		sig := CalcSignature(buf.Bytes(), []byte(e.AppSecret))
 		req.Header.Add("Authorization", "Sign "+sig)
 	} else {
 		token, err := e.Token(ctx)

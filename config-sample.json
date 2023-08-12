@@ -44,7 +44,9 @@
             "email": "",
             "password": "",
             "region": "",
-            "countryCode": "+1"
+            "countryCode": "+1",
+            "appid": "<enter from dev.ewelink.cc>",
+            "appsecret": "<enter from dev.ewelink.cc>"
         }
     },
     "auth": {
