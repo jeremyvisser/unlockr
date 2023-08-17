@@ -1,3 +1,5 @@
+github.com/go-mqtt/mqtt v0.0.0-20210702165922-b33ea0451b0b h1:vm2f0/jmLkfNt4Dmni++I0mi5/2xNB4Ye2/Jj9Wao9o=
+github.com/go-mqtt/mqtt v0.0.0-20210702165922-b33ea0451b0b/go.mod h1:ayzudw2gSvvoYMzWZAx74WLzqCXQ+g4QoaoFGQye+aE=
 github.com/go-sql-driver/mysql v1.7.1 h1:lUIinVbN1DY0xBg0eMOzmmtGoHwWBbvnWubQUrtU8EI=
 github.com/go-sql-driver/mysql v1.7.1/go.mod h1:OXbVy3sEdcQ2Doequ6Z5BW6fXNQTmx+9S1MCJN5yJMI=
 github.com/golang/protobuf v1.3.1/go.mod h1:6lQm79b+lXiMfvg/cZm0SGofjICqVBUtrP5yJMmIC1U=

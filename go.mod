@@ -10,6 +10,7 @@ require (
 )
 
 require (
+	github.com/go-mqtt/mqtt v0.0.0-20210702165922-b33ea0451b0b
 	github.com/golang/protobuf v1.5.3 // indirect
 	golang.org/x/net v0.11.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect

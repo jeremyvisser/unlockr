@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"jeremy.visser.name/unlockr/auth"
-	"jeremy.visser.name/unlockr/ewelink"
 	"jeremy.visser.name/unlockr/index"
 )
 
@@ -31,7 +30,6 @@ func main() {
 	flag.Parse()
 
 	var cfg Config
-	cfg.Credentials.Ewelink = &ewelink.DefaultEwelink
 	if err := cfg.Load(*configPath); err != nil {
 		log.Fatal(err,
 			"\nPlease create config.json and set -config=/path/to/config.json",

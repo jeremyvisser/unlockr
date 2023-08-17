@@ -14,6 +14,7 @@ import (
 	"jeremy.visser.name/unlockr/debug"
 	"jeremy.visser.name/unlockr/device"
 	"jeremy.visser.name/unlockr/ewelink"
+	"jeremy.visser.name/unlockr/mqtt"
 	"jeremy.visser.name/unlockr/noop"
 	"jeremy.visser.name/unlockr/session"
 	"jeremy.visser.name/unlockr/store"
@@ -27,11 +28,12 @@ var (
 type Config struct {
 	Devices struct {
 		Ewelink map[device.ID]*ewelink.Device `json:"ewelink"`
+		Mqtt    map[device.ID]*mqtt.Device    `json:"mqtt"`
 		Noop    map[device.ID]*noop.Device    `json:"noop"`
-		//Shelly  map[string]shelly.Device `json:"shelly"`
 	} `json:"devices"`
 	Credentials struct {
 		Ewelink *ewelink.Ewelink `json:"ewelink"`
+		Mqtt    *mqtt.Mqtt       `json:"mqtt"`
 	} `json:"credentials"`
 	DataStore struct {
 		File *store.FileStore `json:"file"`
@@ -95,6 +97,14 @@ func (c *Config) Load(filename string) error {
 		return err
 	}
 	defer f.Close()
+
+	if c.Credentials.Ewelink == nil {
+		c.Credentials.Ewelink = &ewelink.DefaultEwelink
+	}
+	if c.Credentials.Mqtt == nil {
+		c.Credentials.Mqtt = &mqtt.DefaultMqtt
+	}
+
 	if err := json.NewDecoder(f).Decode(c); err != nil {
 		return err
 	}
@@ -112,8 +122,8 @@ func (c *Config) GetDevices() device.DeviceList {
 	dl := make(device.DeviceList)
 	log.Printf("Loading devices from config:")
 	device.AddDevices(dl, c.Devices.Ewelink)
+	device.AddDevices(dl, c.Devices.Mqtt)
 	device.AddDevices(dl, c.Devices.Noop)
-	//device.AddDevices(dl, c.Devices.Shelly)
 	if debug.Debug {
 		log.Printf("  %#v", dl)
 	}
