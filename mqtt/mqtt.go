@@ -21,8 +21,8 @@ const statusOnline = "Online"
 const statusOffline = "Offline"
 
 type Client interface {
-	Publish(quit <-chan struct{}, message, topic string) error
-	Subscribe(quit <-chan struct{}, topicFilters ...string) error
+	Publish(ctx context.Context, message, topic string) error
+	Subscribe(ctx context.Context, topicFilters ...string) (<-chan *resp, error)
 }
 
 type Mqtt struct {
@@ -44,7 +44,10 @@ type Mqtt struct {
 	ClientID string
 
 	c   *mqtt.Client
-	cmu sync.RWMutex
+	cmu sync.Mutex
+
+	subs map[sub]struct{}
+	smu  sync.Mutex
 }
 
 func (m *Mqtt) clientID() string {
@@ -61,37 +64,48 @@ func (m *Mqtt) statusTopic() string {
 	return fmt.Sprintf("unlockr/%s/status", m.clientID())
 }
 
-func (m *Mqtt) readLoop(c *mqtt.Client, mu *sync.RWMutex) {
-	mu.RLock()
-	defer mu.RUnlock()
-	defer c.Close()
+func (m *Mqtt) readLoop(c *mqtt.Client) {
 	for {
-		message, topic, err := c.ReadSlices()
+		var r resp
+		msg, tc, err := c.ReadSlices()
+		r.message, r.topic = string(msg), string(tc)
 		if err != nil {
 			log.Printf("Mqtt error: %v", err)
 			return
 		}
-		log.Printf("Mqtt <- %v = %v", topic, message)
+		log.Printf("Mqtt <- %v = %v", r.topic, r.message)
+		func() {
+			m.smu.Lock()
+			defer m.smu.Unlock()
+			for s := range m.subs {
+				select {
+				case <-s.ctx.Done():
+					close(s.w)
+				default:
+					s.w <- &r
+				}
+			}
+		}()
 	}
 }
 
 func (m *Mqtt) client() (*mqtt.Client, error) {
-	if !m.cmu.TryLock() {
-		m.cmu.RLock()
-		defer m.cmu.RUnlock()
-		if m.c != nil {
-			return m.c, nil
-		}
-		panic("no mqtt client available")
+	m.cmu.Lock()
+	defer m.cmu.Unlock()
+	if m.c != nil {
+		return m.c, nil
 	}
-	if c, err := mqtt.VolatileSession(m.clientID(), m.config()); err != nil {
-		defer m.cmu.Unlock()
+	c, err := mqtt.VolatileSession(m.clientID(), m.config())
+	if err != nil {
 		return nil, err
-	} else {
-		m.c = c
 	}
-	go m.readLoop(m.c, &m.cmu)
-	m.cmu.Unlock()
+	m.c = c
+	m.smu.Lock()
+	defer m.smu.Unlock()
+	if m.subs == nil {
+		m.subs = make(map[sub]struct{})
+	}
+	go m.readLoop(m.c)
 	return m.c, m.c.PublishRetained(nil, []byte(statusOnline), m.statusTopic())
 }
 
@@ -129,25 +143,53 @@ func (m *Mqtt) dialer() mqtt.Dialer {
 	}
 }
 
-func (m *Mqtt) Publish(quit <-chan struct{}, message, topic string) error {
+func (m *Mqtt) Publish(ctx context.Context, message, topic string) error {
 	if c, err := m.client(); err != nil {
 		return err
 	} else {
 		log.Printf("Mqtt -> %s = %s", topic, message)
-		return c.Publish(quit, []byte(message), topic)
+		return c.Publish(ctx.Done(), []byte(message), topic)
 	}
 }
 
-func (m *Mqtt) Subscribe(quit <-chan struct{}, topicFilters ...string) error {
-	if c, err := m.client(); err != nil {
-		return err
-	} else {
-		log.Printf("Mqtt: subcribe to: %v", topicFilters)
-		return c.Subscribe(quit, topicFilters...)
+func (m *Mqtt) Subscribe(ctx context.Context, topicFilters ...string) (<-chan *resp, error) {
+	c, err := m.client()
+	if err != nil {
+		return nil, err
 	}
+	log.Printf("Mqtt: subcribe: %v", topicFilters)
+	if err = c.Subscribe(ctx.Done(), topicFilters...); err != nil {
+		return nil, err
+	}
+	w := make(chan *resp)
+	// w closed by goroutine below
+	s := sub{
+		ctx,
+		w,
+	}
+	m.smu.Lock()
+	defer m.smu.Unlock()
+	m.subs[s] = struct{}{}
+	go func() {
+		defer close(w)
+		<-ctx.Done()
+		m.smu.Lock()
+		defer m.smu.Unlock()
+		delete(m.subs, s)
+	}()
+	return w, nil
 }
 
 var DefaultMqtt Mqtt
+
+type sub struct {
+	ctx context.Context
+	w   chan *resp
+}
+
+type resp struct {
+	message, topic string
+}
 
 type Cmd struct {
 	Topic, Message string
@@ -155,8 +197,7 @@ type Cmd struct {
 
 type Expect struct {
 	Send *Cmd
-	//Recv *Cmd
-	// not implemented yet
+	Recv *Cmd
 }
 
 func (e *Expect) Run(ctx context.Context, c Client) error {
@@ -165,8 +206,31 @@ func (e *Expect) Run(ctx context.Context, c Client) error {
 	if e.Send == nil {
 		return errors.New("send is a required parameter")
 	}
-	if err := c.Publish(ctx.Done(), e.Send.Message, e.Send.Topic); err != nil {
+	var rchan <-chan *resp
+	if e.Recv != nil && e.Recv.Topic != "" {
+		var err error
+		if rchan, err = c.Subscribe(ctx, e.Recv.Topic); err != nil {
+			return err
+		}
+	}
+	if err := c.Publish(ctx, e.Send.Message, e.Send.Topic); err != nil {
 		return err
+	}
+	if e.Recv != nil && e.Recv.Topic != "" {
+		ret := errors.New("expected mqtt messsage not received")
+		for r := range rchan {
+			// Important: consume the entire channel, even if we don't care,
+			// so we don't deadlock the sender.
+			if r.topic == e.Recv.Topic {
+				if r.message != "" && r.message != e.Recv.Message {
+					// Only check message if specified. Else, any message means success.
+					continue
+				}
+				ret = nil
+				cancel() // ask sender to unsubscribe and close rchan
+			}
+		}
+		return ret
 	}
 	return nil
 }

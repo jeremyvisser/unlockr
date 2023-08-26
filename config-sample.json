@@ -7,6 +7,10 @@
                     "send": {
                         "topic": "cmnd/wombat_tunnel/POWER",
                         "message": "ON"
+                    },
+                    "recv": {
+                        "topic": "stat/wombat_tunnel/POWER",
+                        "message": "ON"
                     }
                 }
             }
