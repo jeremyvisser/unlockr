@@ -14,15 +14,15 @@ import (
 	"jeremy.visser.name/unlockr/device"
 )
 
-const Timeout = 10 * time.Second
+const Timeout = 5 * time.Second
 const KeepAlive = 300 // seconds
 
 const statusOnline = "Online"
 const statusOffline = "Offline"
 
-type Client interface {
-	Publish(quit <-chan struct{}, message, topic string) error
-	Subscribe(quit <-chan struct{}, topicFilters ...string) error
+type Message struct {
+	Message string
+	Topic   string
 }
 
 type Mqtt struct {
@@ -46,6 +46,8 @@ type Mqtt struct {
 	c   *mqtt.Client
 	cmu sync.Mutex
 	rmu sync.Mutex
+
+	subs listenGroup[Message]
 }
 
 func (m *Mqtt) clientID() string {
@@ -74,7 +76,11 @@ func (m *Mqtt) readLoop(c *mqtt.Client) {
 				log.Printf("Mqtt ReadSlices: %v", err)
 				return
 			}
-			log.Printf("Mqtt <- %v = %v", topic, message)
+			log.Printf("Mqtt <- %s = %s", topic, message)
+			m.subs.publish(Message{
+				Message: string(message),
+				Topic:   string(topic),
+			})
 		}
 	}()
 	c.PublishRetained(nil, []byte(statusOnline), m.statusTopic())
@@ -128,7 +134,7 @@ func (m *Mqtt) dialer() mqtt.Dialer {
 	}
 }
 
-func (m *Mqtt) Publish(quit <-chan struct{}, message, topic string) error {
+func (m *Mqtt) publish(quit <-chan struct{}, message, topic string) error {
 	if c, err := m.client(); err != nil {
 		return err
 	} else {
@@ -137,13 +143,29 @@ func (m *Mqtt) Publish(quit <-chan struct{}, message, topic string) error {
 	}
 }
 
-func (m *Mqtt) Subscribe(quit <-chan struct{}, topicFilters ...string) error {
-	if c, err := m.client(); err != nil {
-		return err
-	} else {
-		log.Printf("Mqtt: subcribe to: %v", topicFilters)
-		return c.Subscribe(quit, topicFilters...)
+// subscribe will create an MQTT subscription to topicFilter.
+// Multiple calls with the same topicFilter results in one subscription.
+//
+// Each caller must pass a quit channel and close when done.
+// Context.Done() can be passed as the quit channel.
+// When the last caller quits, the topic is unsubscribed.
+func (m *Mqtt) subscribe(quit <-chan struct{}, topicFilter string) (msgs <-chan Message, err error) {
+	c, err := m.client()
+	if err != nil {
+		return nil, err
 	}
+	start := func() error {
+		return c.Subscribe(quit, topicFilter)
+	}
+	finish := func() {
+		c.Unsubscribe(nil, topicFilter)
+	}
+	msgs, done, err := m.subs.subscribe(topicFilter, start, finish)
+	go func() {
+		<-quit // wait for context to cancel
+		done()
+	}()
+	return msgs, err
 }
 
 var DefaultMqtt Mqtt
@@ -154,17 +176,38 @@ type Cmd struct {
 
 type Expect struct {
 	Send *Cmd
-	//Recv *Cmd
-	// not implemented yet
+	Recv *Cmd
 }
 
-func (e *Expect) Run(ctx context.Context, c Client) error {
+var ErrExpectTimeout = errors.New("expect: timeout waiting for message")
+
+func (e *Expect) Run(ctx context.Context, mq *Mqtt) (err error) {
 	ctx, cancel := context.WithTimeout(ctx, Timeout)
 	defer cancel()
 	if e.Send == nil {
 		return errors.New("send is a required parameter")
 	}
-	if err := c.Publish(ctx.Done(), e.Send.Message, e.Send.Topic); err != nil {
+	var msgs <-chan Message
+	if e.Recv != nil && e.Recv.Topic != "" {
+		msgs, err = mq.subscribe(ctx.Done(), e.Recv.Topic)
+		if err != nil {
+			return err
+		}
+	}
+	if err := mq.publish(ctx.Done(), e.Send.Message, e.Send.Topic); err != nil {
+		return err
+	}
+	if msgs != nil {
+		err := ErrExpectTimeout
+		for m := range msgs {
+			if m.Topic == e.Recv.Topic {
+				if e.Recv.Message == "" || m.Message == e.Recv.Message {
+					err = nil
+					cancel()
+					// set success and close channel, but loop to clear backlog
+				}
+			}
+		}
 		return err
 	}
 	return nil
@@ -184,6 +227,60 @@ func (d *Device) mqtt() *Mqtt {
 }
 
 func (d *Device) Power(ctx context.Context, on bool) (err error) {
-	defer func() { log.Printf("Mqtt[%s] power on=%v; error=%v", d.GetName(), on, err) }()
+	defer func() {
+		if err != nil {
+			log.Printf("Mqtt[%s] power on=%v; error: %v", d.GetName(), on, err)
+		}
+		log.Printf("Mqtt[%s] power on=%v; success", d.GetName(), on)
+	}()
 	return d.PowerCmd.Run(ctx, d.mqtt())
+}
+
+type listenGroup[T any] struct {
+	m  map[string]map[chan T]struct{}
+	mu sync.Mutex
+}
+
+// subscribe takes a topic as key, and calls start() for the first listener.
+// Calls to publish() are written to msgsR. When finished, call done().
+// When the last listener calls done(), finish() is called.
+//
+// If start() returns an error, msgsR and done are nil.
+func (g *listenGroup[T]) subscribe(key string, start func() error, finish func()) (msgsR <-chan T, done func(), err error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.m == nil {
+		g.m = make(map[string]map[chan T]struct{})
+	}
+	if _, ok := g.m[key]; !ok {
+		if err := start(); err != nil {
+			return nil, nil, err
+		}
+		newgrp := make(map[chan T]struct{})
+		g.m[key] = newgrp
+	}
+	msgsW := make(chan T)
+	g.m[key][msgsW] = struct{}{}
+	msgsR = msgsW
+	done = func() {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		delete(g.m[key], msgsW)
+		close(msgsW)
+		if len(g.m[key]) == 0 {
+			finish()
+			delete(g.m, key)
+		}
+	}
+	return msgsR, done, nil
+}
+
+func (g *listenGroup[T]) publish(message T) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, v := range g.m {
+		for c := range v {
+			c <- message
+		}
+	}
 }

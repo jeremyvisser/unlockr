@@ -6,7 +6,7 @@ Simple web-based device control with flexible authentication.
 
 - Standalone Go HTTP server
 - OAuth or SQL query authentication
-- Ewelink devices currently supported
+- Ewelink or MQTT devices currently supported
 - Generic interfaces for adding new device APIs
 - Lightweight web interface, installable as PWA
 
