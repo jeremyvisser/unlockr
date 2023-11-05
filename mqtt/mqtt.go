@@ -44,7 +44,8 @@ type Mqtt struct {
 	ClientID string
 
 	c   *mqtt.Client
-	cmu sync.RWMutex
+	cmu sync.Mutex
+	rmu sync.Mutex
 }
 
 func (m *Mqtt) clientID() string {
@@ -61,38 +62,36 @@ func (m *Mqtt) statusTopic() string {
 	return fmt.Sprintf("unlockr/%s/status", m.clientID())
 }
 
-func (m *Mqtt) readLoop(c *mqtt.Client, mu *sync.RWMutex) {
-	mu.RLock()
-	defer mu.RUnlock()
-	defer c.Close()
-	for {
-		message, topic, err := c.ReadSlices()
-		if err != nil {
-			log.Printf("Mqtt error: %v", err)
-			return
-		}
-		log.Printf("Mqtt <- %v = %v", topic, message)
+func (m *Mqtt) readLoop(c *mqtt.Client) {
+	if !m.rmu.TryLock() {
+		return // readLoop already running
 	}
+	go func() {
+		defer m.rmu.Unlock()
+		for {
+			message, topic, err := c.ReadSlices()
+			if err != nil {
+				log.Printf("Mqtt ReadSlices: %v", err)
+				return
+			}
+			log.Printf("Mqtt <- %v = %v", topic, message)
+		}
+	}()
+	c.PublishRetained(nil, []byte(statusOnline), m.statusTopic())
 }
 
 func (m *Mqtt) client() (*mqtt.Client, error) {
-	if !m.cmu.TryLock() {
-		m.cmu.RLock()
-		defer m.cmu.RUnlock()
-		if m.c != nil {
-			return m.c, nil
+	m.cmu.Lock()
+	defer m.cmu.Unlock()
+	if m.c == nil {
+		if c, err := mqtt.VolatileSession(m.clientID(), m.config()); err != nil {
+			return nil, err
+		} else {
+			m.c = c
 		}
-		panic("no mqtt client available")
 	}
-	if c, err := mqtt.VolatileSession(m.clientID(), m.config()); err != nil {
-		defer m.cmu.Unlock()
-		return nil, err
-	} else {
-		m.c = c
-	}
-	go m.readLoop(m.c, &m.cmu)
-	m.cmu.Unlock()
-	return m.c, m.c.PublishRetained(nil, []byte(statusOnline), m.statusTopic())
+	m.readLoop(m.c)
+	return m.c, nil
 }
 
 func (m *Mqtt) config() *mqtt.Config {
