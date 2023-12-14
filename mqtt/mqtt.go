@@ -158,7 +158,14 @@ func (m *Mqtt) subscribe(quit <-chan struct{}, topicFilter string) (msgs <-chan 
 		return c.Subscribe(quit, topicFilter)
 	}
 	finish := func() {
-		c.Unsubscribe(nil, topicFilter)
+		// Best-effort unsubscribe: we're unwilling to wait more than Timeout.
+		ctx, cancel := context.WithTimeout(context.Background(), Timeout)
+		defer cancel()
+		if err := c.Unsubscribe(ctx.Done(), topicFilter); err != nil {
+			log.Printf("Mqtt.subscribe: finish unsubscribe failed: %v", err)
+		} else if err := ctx.Err(); err != nil {
+			log.Printf("Mqtt.subscribe: finish context failed: %v", err)
+		}
 	}
 	msgs, done, err := m.subs.subscribe(topicFilter, start, finish)
 	go func() {
