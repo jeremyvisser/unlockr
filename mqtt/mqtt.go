@@ -16,6 +16,7 @@ import (
 
 const Timeout = 5 * time.Second
 const KeepAlive = 300 // seconds
+const BufLen = 64     // messages
 
 const statusOnline = "Online"
 const statusOffline = "Offline"
@@ -70,6 +71,9 @@ func (m *Mqtt) readLoop(c *mqtt.Client) {
 	}
 	go func() {
 		defer m.rmu.Unlock()
+		pub := make(chan Message, BufLen)
+		defer close(pub)
+		go m.subs.publish(pub)
 		for {
 			message, topic, err := c.ReadSlices()
 			if err != nil {
@@ -77,10 +81,12 @@ func (m *Mqtt) readLoop(c *mqtt.Client) {
 				return
 			}
 			log.Printf("Mqtt <- %s = %s", topic, message)
-			m.subs.publish(Message{
-				Message: string(message),
-				Topic:   string(topic),
-			})
+			select {
+			case pub <- Message{string(message), string(topic)}:
+				continue
+			default:
+				log.Printf("Mqtt: discarded 1 message due to full buffer (%d messages queued)", BufLen)
+			}
 		}
 	}()
 	c.PublishRetained(nil, []byte(statusOnline), m.statusTopic())
@@ -249,10 +255,10 @@ type listenGroup[T any] struct {
 }
 
 // subscribe takes a topic as key, and calls start() for the first listener.
-// Calls to publish() are written to msgsR. When finished, call done().
-// When the last listener calls done(), finish() is called.
+// Messages sent to publish() are written to msgsR. When finished, call done().
 //
-// If start() returns an error, msgsR and done are nil.
+// When the last listener calls done(), finish() is called.
+// If start() errors, msgsR and done are nil, and finish is not called.
 func (g *listenGroup[T]) subscribe(key string, start func() error, finish func()) (msgsR <-chan T, done func(), err error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -282,12 +288,16 @@ func (g *listenGroup[T]) subscribe(key string, start func() error, finish func()
 	return msgsR, done, nil
 }
 
-func (g *listenGroup[T]) publish(message T) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	for _, v := range g.m {
-		for c := range v {
-			c <- message
+// publish accepts a channel, and consumes messages until it is closed.
+// Each subscriber receives a copy of the message.
+func (g *listenGroup[T]) publish(messages <-chan T) {
+	for msg := range messages {
+		g.mu.Lock()
+		for _, v := range g.m {
+			for c := range v {
+				c <- msg
+			}
 		}
+		g.mu.Unlock()
 	}
 }

@@ -64,42 +64,40 @@ func TestListenGroupMessages(t *testing.T) {
 	var lg listenGroup[T]
 
 	start := func() error { return nil }
-	finish := func() {}
+	finished := make(chan struct{})
+	finish := func() { close(finished) }
 	m1, done1, err := lg.subscribe("rabbits", start, finish)
 	if err != nil {
 		t.Error(err)
 	}
-	defer done1()
 	m2, done2, err := lg.subscribe("rabbits", start, finish)
 	if err != nil {
 		t.Error(err)
 	}
-	defer done2()
 
-	var m1count, m2count T
-	done := make(chan struct{})
-	n := T(20)
+	const n T = 20
+
+	pub := make(chan T, n*2)
 	go func() {
 		for i := T(0); i < n; i++ {
-			lg.publish(1)
+			pub <- 1
 		}
-		done <- struct{}{}
+		close(pub)
 	}()
 
-L:
-	for {
-		select {
-		case <-m1:
-			m1count++
-			continue
-		case <-m2:
-			m2count++
-			continue
-		case <-done:
-			close(done)
-			break L
+	counter := func(i *T, c <-chan T, done func()) {
+		for *i < n {
+			*i += <-c
 		}
+		done()
 	}
+
+	var m1count, m2count T
+	go counter(&m1count, m1, done1)
+	go counter(&m2count, m2, done2)
+
+	lg.publish(pub)
+	<-finished
 
 	if got1, got2, want := m1count, m2count, n; got1 != want || got2 != want {
 		t.Errorf("got m1count=%d, m2count=%d, want n=%d", m1count, m2count, n)
@@ -127,7 +125,10 @@ func TestListenGroupUnsubscribe(t *testing.T) {
 	}
 	lg.mu.Unlock()
 
-	go lg.publish(T(1)) // should block if listeners present
+	pub := make(chan T) // unbuffered
+	defer close(pub)
+	go lg.publish(pub)
+	go func() { pub <- 1 }() // should block, with listeners
 	for i := 0; i < 2; i++ {
 		select {
 		case <-m1:
@@ -137,7 +138,7 @@ func TestListenGroupUnsubscribe(t *testing.T) {
 	done1()
 	done2()
 
-	lg.publish(T(1)) // should return if no listeners
+	pub <- 1 // should not block, with no listeners
 
 	lg.mu.Lock()
 	if _, ok := lg.m["rabbits"]; ok {
