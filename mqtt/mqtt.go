@@ -21,9 +21,12 @@ const BufLen = 64     // messages
 const statusOnline = "Online"
 const statusOffline = "Offline"
 
+type Payload string
+type Topic string
+
 type Message struct {
-	Message string
-	Topic   string
+	Payload `json:"message"`
+	Topic   `json:"topic"`
 }
 
 type Mqtt struct {
@@ -48,7 +51,8 @@ type Mqtt struct {
 	cmu sync.Mutex
 	rmu sync.Mutex
 
-	subs listenGroup[Message]
+	subs   listenGroup[Message]
+	topics map[Topic]struct{}
 }
 
 func (m *Mqtt) clientID() string {
@@ -75,14 +79,14 @@ func (m *Mqtt) readLoop(c *mqtt.Client) {
 		defer close(pub)
 		go m.subs.publish(pub)
 		for {
-			message, topic, err := c.ReadSlices()
+			payload, topic, err := c.ReadSlices()
 			if err != nil {
 				log.Printf("Mqtt ReadSlices: %v", err)
 				return
 			}
-			log.Printf("Mqtt <- %s = %s", topic, message)
+			log.Printf("Mqtt <- %s = %s", topic, payload)
 			select {
-			case pub <- Message{string(message), string(topic)}:
+			case pub <- Message{Payload(payload), Topic(topic)}:
 				continue
 			default:
 				log.Printf("Mqtt: discarded 1 message due to full buffer (%d messages queued)", BufLen)
@@ -140,56 +144,41 @@ func (m *Mqtt) dialer() mqtt.Dialer {
 	}
 }
 
-func (m *Mqtt) publish(quit <-chan struct{}, message, topic string) error {
+func (m *Mqtt) publish(quit <-chan struct{}, message *Message) error {
 	if c, err := m.client(); err != nil {
 		return err
 	} else {
-		log.Printf("Mqtt -> %s = %s", topic, message)
-		return c.Publish(quit, []byte(message), topic)
+		log.Printf("Mqtt -> %s = %s", message.Topic, message.Payload)
+		return c.Publish(quit, []byte(message.Payload), string(message.Topic))
 	}
 }
 
 // subscribe will create an MQTT subscription to topicFilter.
 // Multiple calls with the same topicFilter results in one subscription.
 //
-// Each caller must pass a quit channel and close when done.
-// Context.Done() can be passed as the quit channel.
-// When the last caller quits, the topic is unsubscribed.
-func (m *Mqtt) subscribe(quit <-chan struct{}, topicFilter string) (msgs <-chan Message, err error) {
+// Each caller must pass a quit channel. If quit is nil, it blocks forever.
+// When finished, closing quit will cause msgs to be closed, but must be read
+// from to clear the backlog.
+func (m *Mqtt) subscribe(quit <-chan struct{}, topicFilter Topic) (msgs <-chan Message, err error) {
 	c, err := m.client()
 	if err != nil {
 		return nil, err
 	}
-	start := func() error {
-		return c.Subscribe(quit, topicFilter)
-	}
-	finish := func() {
-		// Best-effort unsubscribe: we're unwilling to wait more than Timeout.
-		ctx, cancel := context.WithTimeout(context.Background(), Timeout)
-		defer cancel()
-		if err := c.Unsubscribe(ctx.Done(), topicFilter); err != nil {
-			log.Printf("Mqtt.subscribe: finish unsubscribe failed: %v", err)
-		} else if err := ctx.Err(); err != nil {
-			log.Printf("Mqtt.subscribe: finish context failed: %v", err)
+	if _, ok := m.topics[topicFilter]; !ok {
+		if err := c.Subscribe(quit, string(topicFilter)); err != nil {
+			log.Printf("Mqtt.subscribe: %v", err)
+			return nil, err
 		}
 	}
-	msgs, done, err := m.subs.subscribe(topicFilter, start, finish)
-	go func() {
-		<-quit // wait for context to cancel
-		done()
-	}()
-	return msgs, err
+	msgs = m.subs.subscribe(quit)
+	return msgs, nil
 }
 
 var DefaultMqtt Mqtt
 
-type Cmd struct {
-	Topic, Message string
-}
-
 type Expect struct {
-	Send *Cmd
-	Recv *Cmd
+	Send *Message
+	Recv *Message
 }
 
 var ErrExpectTimeout = errors.New("expect: timeout waiting for message")
@@ -207,14 +196,14 @@ func (e *Expect) Run(ctx context.Context, mq *Mqtt) (err error) {
 			return err
 		}
 	}
-	if err := mq.publish(ctx.Done(), e.Send.Message, e.Send.Topic); err != nil {
+	if err := mq.publish(ctx.Done(), e.Send); err != nil {
 		return err
 	}
 	if msgs != nil {
 		err := ErrExpectTimeout
 		for m := range msgs {
 			if m.Topic == e.Recv.Topic {
-				if e.Recv.Message == "" || m.Message == e.Recv.Message {
+				if e.Recv.Payload == "" || m.Payload == e.Recv.Payload {
 					err = nil
 					cancel()
 					// set success and close channel, but loop to clear backlog
@@ -250,42 +239,29 @@ func (d *Device) Power(ctx context.Context, on bool) (err error) {
 }
 
 type listenGroup[T any] struct {
-	m  map[string]map[chan T]struct{}
+	m  map[chan T]struct{}
 	mu sync.Mutex
 }
 
-// subscribe takes a topic as key, and calls start() for the first listener.
-// Messages sent to publish() are written to msgsR. When finished, call done().
-//
-// When the last listener calls done(), finish() is called.
-// If start() errors, msgsR and done are nil, and finish is not called.
-func (g *listenGroup[T]) subscribe(key string, start func() error, finish func()) (msgsR <-chan T, done func(), err error) {
+// subscribe returns a channel, from which published messages can be read.
+// Listeners can unsubscribe by closing quit. After closing quit, msgsR must
+// continue to be read until closed.
+func (g *listenGroup[T]) subscribe(quit <-chan struct{}) (msgsR <-chan T) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.m == nil {
-		g.m = make(map[string]map[chan T]struct{})
+		g.m = make(map[chan T]struct{})
 	}
-	if _, ok := g.m[key]; !ok {
-		if err := start(); err != nil {
-			return nil, nil, err
-		}
-		newgrp := make(map[chan T]struct{})
-		g.m[key] = newgrp
-	}
-	msgsW := make(chan T)
-	g.m[key][msgsW] = struct{}{}
-	msgsR = msgsW
-	done = func() {
+	msgs := make(chan T)
+	g.m[msgs] = struct{}{} // append new chan to group
+	go func() {
+		<-quit // block until done
 		g.mu.Lock()
 		defer g.mu.Unlock()
-		delete(g.m[key], msgsW)
-		close(msgsW)
-		if len(g.m[key]) == 0 {
-			finish()
-			delete(g.m, key)
-		}
-	}
-	return msgsR, done, nil
+		delete(g.m, msgs)
+		close(msgs)
+	}()
+	return msgs
 }
 
 // publish accepts a channel, and consumes messages until it is closed.
@@ -293,10 +269,8 @@ func (g *listenGroup[T]) subscribe(key string, start func() error, finish func()
 func (g *listenGroup[T]) publish(messages <-chan T) {
 	for msg := range messages {
 		g.mu.Lock()
-		for _, v := range g.m {
-			for c := range v {
-				c <- msg
-			}
+		for v := range g.m {
+			v <- msg
 		}
 		g.mu.Unlock()
 	}
