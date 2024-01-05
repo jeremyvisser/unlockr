@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"jeremy.visser.name/unlockr/auth"
+	"jeremy.visser.name/unlockr/auth/guest"
 	"jeremy.visser.name/unlockr/index"
 )
 
@@ -58,6 +59,15 @@ func main() {
 			ah.SessionStore = ss
 			ah.Handler = &authMux
 		}
+
+		if cfg.Guest.Enabled() {
+			authHandler = &guest.Handler{
+				Passthru:     authHandler,
+				Handler:      &authMux,
+				SessionStore: ss,
+				Config:       cfg.Guest,
+			}
+		}
 	}
 
 	// Register authenticated paths with auth handler:
@@ -66,9 +76,12 @@ func main() {
 	authMux.Handle("/api/index", idx)
 	authMux.Handle("/api/device/", dl)
 	authMux.HandleFunc("/api/user", auth.ServeUser)
+	if gh, ok := authHandler.(*guest.Handler); ok {
+		authMux.HandleFunc("/api/guest/token", gh.ServeGuestNew)
+	}
 
 	// No caching on /api/:
-	apiHandler := HeaderAdder{
+	authHandler = HeaderAdder{
 		Handler: authHandler,
 		AddHeaders: http.Header{
 			"Cache-Control": []string{"no-store"},
@@ -76,7 +89,7 @@ func main() {
 	}
 
 	// Register pre-auth handlers:
-	http.Handle("/api/", apiHandler)
+	http.Handle("/api/", authHandler)
 	http.Handle("/", staticHandler)
 
 	// Listen using DefaultServeMux:

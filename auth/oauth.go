@@ -67,8 +67,7 @@ func (j *jsonOAuthProfile) UnmarshalJSON(v []byte) error {
 	default:
 		return fmt.Errorf("unsupported OAuth profile: %v", t)
 	}
-	json.Unmarshal(v, j.OAuthProfile)
-	return nil
+	return json.Unmarshal(v, j.OAuthProfile)
 }
 
 func (h *OAuthHandler) init() error {

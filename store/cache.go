@@ -18,7 +18,7 @@ const (
 	defaultSessionCacheLen = 10 * defaultUserCacheLen
 )
 
-var ErrNoStore = errors.New("cache: no storage defined")
+var ErrNoStore = errors.New("cache: session not found in memory store (since no session storage is defined, restarts will erase sessions)")
 
 type UserStoreCache struct {
 	// If nil, cached users may still be used,

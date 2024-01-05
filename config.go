@@ -11,6 +11,7 @@ import (
 
 	"jeremy.visser.name/unlockr/access"
 	"jeremy.visser.name/unlockr/auth"
+	"jeremy.visser.name/unlockr/auth/guest"
 	"jeremy.visser.name/unlockr/debug"
 	"jeremy.visser.name/unlockr/device"
 	"jeremy.visser.name/unlockr/ewelink"
@@ -39,7 +40,8 @@ type Config struct {
 		File *store.FileStore `json:"file"`
 		DB   *store.DBStore   `json:"db"`
 	} `json:"datastore"`
-	Auth *jsonAuthType `json:"auth"`
+	Auth  *jsonAuthType `json:"auth"`
+	Guest *guest.Config `json:"guest,omitempty"`
 }
 
 type jsonAuthType struct {

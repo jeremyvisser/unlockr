@@ -27,9 +27,12 @@ window.litDisableBundleWarning = true;
 <script type="module">
 import {html, css, map, until, LitElement} from "./third_party/lit-all.min.js";
 
+const ProductName = "Door Unlocker";
+const GuestCookie = "Unlockr-Session";
 const OAuthLoginURL = "api/login";
 const ErrAuthNeedsRedirect = new Error("OAuth redirect required");
 const ErrAuthNeedsPassword = new Error("Password authentication required");
+const ErrTokenExpired = new Error("Guest token expired");
 
 const sharedStyles = css`
     label, input, button {
@@ -55,6 +58,30 @@ const sharedStyles = css`
     }
 `;
 
+class Api {
+    token = undefined;
+
+    constructor() {
+        const u = new URL(window.location.href);
+        const t = u.searchParams.get("t");
+        if (t) {
+            this.token = t;
+        }
+    }
+
+    async fetch(url, options = {}) {
+        if (this.token) {
+            if (!options.headers) {
+                options.headers = new Headers;
+            }
+            if (!options.headers.get("Authorization")) {
+                options.headers.set("Authorization", `Bearer ${this.token}`);
+            }
+        }
+        return fetch(url, options);
+    }
+}
+
 async function retry(callback, {retries = 3, delayMsec = 1000} = {}) {
     try {
         return await callback();
@@ -76,6 +103,7 @@ async function sleep(msec) {
 }
 
 class UserState {
+    api = new Api;
     user = undefined;
     devices = undefined;
 
@@ -94,8 +122,12 @@ class UserState {
             :  this.user?.username;
     }
 
+    guest() {
+        return this.user?.username == "guest";
+    }
+
     async newLogin({username, password}) {
-        await fetch("api/login", {
+        await this.api.fetch("api/login", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({username, password}),
@@ -118,7 +150,7 @@ class UserState {
 
         if (!this._syncing) {
             this._syncing = retry(() =>
-                fetch("api/index", {redirect: "manual"}).then(async (response) => {
+                this.api.fetch("api/index", {redirect: "manual"}).then(async (response) => {
                     if (response.ok || response.status == 401 || response.type == "opaqueredirect") {
                         return response; // permanent, don't retry
                     }
@@ -137,6 +169,14 @@ class UserState {
                     return response.json();
                 }
                 throw new Error(await response.text());
+            }).catch(async (err) => {
+                const tokenRethrow = [ErrAuthNeedsRedirect, ErrAuthNeedsPassword];
+                if (this.api.token && tokenRethrow.includes(err)) {
+                    // Token-based auth (i.e. guest) should error without prompting logon.
+                    // Rethrow error as this instead:
+                    throw ErrTokenExpired;
+                }
+                throw err;
             }).then(async (newState) => {
                 this.user = newState.user;
                 this.devices = new Map;
@@ -161,6 +201,7 @@ class UserState {
 }
 
 class Device {
+    api = new Api;
     id;
     name;
 
@@ -173,7 +214,7 @@ class Device {
         let onoff = on
             ? "on"
             : "off";
-        return fetch(`api/device/${this.id}/power/${onoff}`, {method: "POST"})
+        return this.api.fetch(`api/device/${this.id}/power/${onoff}`, {method: "POST"})
             .then(async (response) => {
                 if (!response.ok) {
                     throw new Error(await response.text());
@@ -311,7 +352,7 @@ class HeaderBar extends LitElement {
 
     render() {
         return html`
-            <h1>Door Unlocker</h1>
+            <h1>${ProductName}</h1>
             <div class="user">${this.user}</div>
         `;
     }
@@ -370,6 +411,135 @@ class LoginForm extends LitElement {
     }
 }
 customElements.define("login-form", LoginForm);
+
+class GuestInvite extends LitElement {
+    api = new Api;
+
+    static properties = {
+        userState: {type: Object},
+        tokenInfo: {type: Object},
+    };
+
+    static styles = [
+        sharedStyles,
+        css`
+        :host {
+            display: block;
+            margin: 1em;
+        }
+
+        p {
+            text-align: center;
+        }
+
+        .guest-link textarea {
+            font-size: 0.5em;
+        }
+
+        textarea, button {
+            display: inline-block;
+            vertical-align: middle;
+            margin: 0.5em;
+        }
+        `
+    ];
+
+    async token() {
+        if (this.tokenInfo?.expiry < Date.now()) {
+            this.tokenInfo = null;
+        }
+        if (!this.tokenInfo) {
+            await this.api.fetch("api/guest/token", {method: "POST"}).then(async (response) => {
+                if (!response.ok) {
+                    throw new Error(await response.text());
+                }
+                return response.json();
+            }).then(async (data) => {
+                let tokenInfo = {
+                    token: data.token,
+                    expiry: Date.parse(data.expiry),
+                };
+                if (tokenInfo.token.length < 1 || tokenInfo.expiry < Date.now()) {
+                    throw new Error("guest token is unusable: ", data);
+                }
+                this.tokenInfo = tokenInfo;
+            });
+        }
+        return this.tokenInfo;
+    }
+
+    tokenLink() {
+        const u = new URL(window.location.href);
+        u.searchParams.set("t", this.tokenInfo.token);
+        return u.href;
+    }
+
+    shareData() {
+        const data = {
+            url: this.tokenLink(),
+            title: `${ProductName} invitation`,
+            text: `${this.userState.name()} invites you to unlock doors`,
+        };
+        if (navigator.canShare && navigator.canShare(data)) {
+            return data;
+        }
+        return null;
+    }
+
+    async submit(event) {
+        event.preventDefault(); // ensure form is handled by JS
+        const btn = event.target.btn;
+        btn.disabled = true;
+        this.token().then(() => {
+            this.requestUpdate();
+            const sd = this.shareData();
+            if (sd) {
+                navigator.share(sd);
+            }
+        }).catch((err) => {
+            toast(this, err);
+            console.error(err);
+        }).finally(() => {
+            btn.disabled = false;
+        });
+    }
+
+    render() {
+        if (this.userState.guest()) {
+            return; // guests cannot invite guests
+        }
+        if (this.tokenInfo) {
+            const validHours = Math.round(
+                (this.tokenInfo.expiry - Date.now())
+                / 1000 / 60 / 60  // msec -> hour
+            );
+            const sd = this.shareData();
+            let shareBtn = html``;
+            if (sd) {
+                shareBtn = html`<button @click=${() => navigator.share(sd)}>Share…</button>`;
+            }
+            return html`
+                <p>
+                    Share this link with your guest:
+                </p>
+                <p class="guest-link">
+                    <textarea readonly cols=50 rows=2>${this.tokenLink()}</textarea>
+                    <button @click=${() => navigator.clipboard.writeText(this.tokenLink())}>Copy</button>
+                    ${shareBtn}
+                </p>
+                <p>
+                    This link is valid for <strong>${validHours} hours</strong>.
+                </p>`;
+        }
+        return html`
+            <form id="guestInvite" @submit=${this.submit}>
+                <p>
+                    <button name="btn">Invite Guest</button>
+                </p>
+            </form>`;
+    }
+}
+customElements.define("guest-invite", GuestInvite);
 
 class DeviceControl extends LitElement {
     static properties = {
@@ -485,7 +655,7 @@ class AppController extends LitElement {
 
     async connectedCallback() {
         super.connectedCallback();
-        
+
         this.addEventListener("toast",
             (event) => this.toaster.toast(event.detail.message)
         );
@@ -494,7 +664,10 @@ class AppController extends LitElement {
     async renderMain() {
         return this.userState.maybeSync().then(
             // Success, and logged in:
-            () => html`<dashboard-view .devices=${this.userState.devices}></dashboard-view>`,
+            () => html`
+                <dashboard-view .devices=${this.userState.devices}></dashboard-view>
+                <guest-invite .userState=${this.userState}></guest-invite>
+            `,
             // Fail:
             (err) => {
                 switch (err) {
@@ -504,7 +677,7 @@ class AppController extends LitElement {
                     case ErrAuthNeedsPassword:
                         return html`<login-form .userState=${this.userState}></login-form>`;
                     default:
-                        console.error(err);    
+                        console.error(err);
                         return html`
                             <div class="error">
                                 <button @click=${() => window.location.reload()}>Reload</button>

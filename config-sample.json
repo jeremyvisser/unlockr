@@ -86,5 +86,8 @@
             "type": "wordpress",
             "profileurl": "/oauth/me/"
         }
+    },
+    "guest": {
+        "lifetime": "48h"
     }
 }

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"jeremy.visser.name/unlockr/access"
@@ -86,15 +87,19 @@ func FromContext(ctx context.Context) (s *Session, ok bool) {
 // FromRequest finds a session token, fetches the associated Session, and returns
 // a Session, and r's Context which can be passed to FromContext.
 func FromRequest(ctx context.Context, r *http.Request, ss SessionStore) (context.Context, SessionId, *Session, error) {
-	c, err := r.Cookie(cookieName)
-	if err != nil {
+	var id SessionId
+
+	if t, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok && t > "" {
+		id = SessionId(t) // used by guests
+	} else if c, err := r.Cookie(cookieName); err == nil {
+		id = SessionId(c.Value) // used by regular users
+	} else {
 		return nil, "", nil, fmt.Errorf("%w: %w", ErrNoSession, err)
 	}
 
-	id := SessionId(c.Value)
 	s, err := ss.Session(r.Context(), id)
 	if err != nil {
-		return nil, "", nil, err
+		return nil, "", nil, fmt.Errorf("session.FromRequest: SessionStore.Session: %w", err)
 	}
 
 	if s.IsExpired() {
@@ -109,21 +114,15 @@ func FromRequest(ctx context.Context, r *http.Request, ss SessionStore) (context
 //
 // extra may be nil if not needed. Currently, extra is used for storing
 // OAuth tokens with the session.
-func Register(u access.Username, extra Extra, w http.ResponseWriter, r *http.Request, ss SessionStore) (id SessionId, err error) {
-	ss.CleanSessions(r.Context()) // an opportunity to cleanup expired sessions
-	id, err = newID(r.Context(), ss)
-	if err != nil {
-		return "", err
-	}
-
+func Register(u access.Username, extra Extra, w http.ResponseWriter, r *http.Request, ss SessionStore) (SessionId, error) {
 	s := &Session{
 		Username: u,
 		Expiry:   time.Now().Add(Lifetime),
 		Extra:    extra,
 	}
-	s.renew()
 
-	if err := ss.SaveSession(r.Context(), id, s); err != nil {
+	id, err := New(r.Context(), s, ss)
+	if err != nil {
 		return "", err
 	}
 
@@ -143,12 +142,26 @@ func Logout(w http.ResponseWriter, r *http.Request, ss SessionStore) {
 	ss.CleanSessions(r.Context())
 }
 
-func newID(ctx context.Context, ss SessionStore) (id SessionId, err error) {
+// New saves s to the SessionStore, generating a new ID, and returning it to the caller.
+// No cookie or HTTP response is generated here.
+func New(ctx context.Context, s *Session, ss SessionStore) (SessionId, error) {
+	ss.CleanSessions(ctx) // an opportunity to cleanup expired sessions
+	id, err := newID(ctx, ss)
+	if err != nil {
+		return "", err
+	}
+	if err := ss.SaveSession(ctx, id, s); err != nil {
+		return "", err
+	}
+	return id, err
+}
+
+func newID(ctx context.Context, ss SessionStore) (SessionId, error) {
 	buf := make([]byte, tokenLength)
 	if _, err := rand.Read(buf); err != nil {
 		return "", err
 	}
-	id = SessionId(base64.StdEncoding.EncodeToString(buf))
+	id := SessionId(base64.StdEncoding.EncodeToString(buf))
 	if s, err := ss.Session(ctx, id); err == nil {
 		return "", fmt.Errorf("session id collision: id[%s] already belongs to %+v", id, s)
 	}

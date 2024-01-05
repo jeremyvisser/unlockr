@@ -164,17 +164,17 @@ func (e *Ewelink) newRequestInternal(ctx context.Context, url string, payload an
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("x-ck-appid", e.AppID)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-ck-appid", e.AppID)
 	if preauth {
 		sig := CalcSignature(buf.Bytes(), []byte(e.AppSecret))
-		req.Header.Add("Authorization", "Sign "+sig)
+		req.Header.Set("Authorization", "Sign "+sig)
 	} else {
 		token, err := e.Token(ctx)
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Add("Authorization", "Bearer "+token)
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	return req, nil
 }
