@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"reflect"
 	"time"
 
 	"jeremy.visser.name/unlockr/access"
@@ -43,6 +44,18 @@ func (l *Lifetime) UnmarshalJSON(v []byte) error {
 	var s string
 	err := json.Unmarshal(v, &s)
 	if err != nil {
+		var errU *json.UnmarshalTypeError
+		if errors.As(err, &errU) {
+			if errU.Type.Kind() == reflect.String {
+				// String failed, try again as time.Duration:
+				var li time.Duration
+				if err := json.Unmarshal(v, &li); err == nil {
+					*l = Lifetime(li)
+					return nil
+				}
+				// Return original error if second try failed.
+			}
+		}
 		return err
 	}
 
