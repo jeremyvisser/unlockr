@@ -106,6 +106,7 @@ class UserState {
     api = new Api;
     user = undefined;
     devices = undefined;
+    guest = undefined;
 
     _syncing = false; // mutex-ish
 
@@ -122,8 +123,8 @@ class UserState {
             :  this.user?.username;
     }
 
-    guest() {
-        return this.user?.username == "guest";
+    guestInviteOK() {
+        return this.user?.username != "guest" && this.guest?.lifetime > 0;
     }
 
     async newLogin({username, password}) {
@@ -179,6 +180,10 @@ class UserState {
                 throw err;
             }).then(async (newState) => {
                 this.user = newState.user;
+                this.guest = undefined;
+                if (newState.guest) {
+                    this.guest = newState.guest;
+                }
                 this.devices = new Map;
                 for (const [id, d] of Object.entries(newState.devices)) {
                     this.devices.set(id, new Device({
@@ -190,6 +195,7 @@ class UserState {
             }).catch((err) => {
                 this.user = undefined;
                 this.devices = undefined;
+                this.guest = undefined;
                 this._host?.requestUpdate();
                 throw err;
             }).finally(() => {
@@ -505,8 +511,8 @@ class GuestInvite extends LitElement {
     }
 
     render() {
-        if (this.userState.guest()) {
-            return; // guests cannot invite guests
+        if (!this.userState.guestInviteOK()) {
+            return; // guest invites disabled
         }
         if (this.tokenInfo) {
             const validHours = Math.round(

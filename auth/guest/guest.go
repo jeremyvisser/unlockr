@@ -16,6 +16,10 @@ import (
 
 const key = "guest"
 
+type ctxKeyType int
+
+var ctxKey ctxKeyType
+
 type Config struct {
 	// Lifetime is how long a guest pass can exist for.
 	// Zero value means guest passes are not allowed.
@@ -27,6 +31,10 @@ func (c *Config) Enabled() bool {
 		return false // zero-value occurs when guest block isn't configured
 	}
 	return c.Lifetime > 0
+}
+
+func (c *Config) NewContext(parent context.Context) context.Context {
+	return context.WithValue(parent, ctxKey, c)
 }
 
 type Lifetime time.Duration
@@ -94,9 +102,12 @@ type Handler struct {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Used by index to return guest config:
+	ctx := h.Config.NewContext(r.Context())
+
 	{
 		// If any failures occur, pass to next handler:
-		ctx, _, s, err := session.FromRequest(r.Context(), r, h.SessionStore)
+		ctx, _, s, err := session.FromRequest(ctx, r, h.SessionStore)
 		if err != nil {
 			if debug.Debug {
 				log.Printf("GuestHandler: session.FromRequest: %v", err)
@@ -136,7 +147,7 @@ passthru:
 	if debug.Debug {
 		log.Printf("GuestHandler: passthrough to next handler: %v", h.Passthru)
 	}
-	h.Passthru.ServeHTTP(w, r)
+	h.Passthru.ServeHTTP(w, r.WithContext(ctx))
 }
 
 type Info struct {
@@ -220,3 +231,8 @@ func NewUser(parent *access.User) (guest *access.User, err error) {
 }
 
 var ErrNoGatecrashers = errors.New("guests cannot invite guests")
+
+func ConfigFromContext(ctx context.Context) (cfg *Config, ok bool) {
+	cfg, ok = ctx.Value(ctxKey).(*Config)
+	return
+}

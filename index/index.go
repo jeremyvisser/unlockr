@@ -1,11 +1,13 @@
 package index
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
 
 	"jeremy.visser.name/unlockr/access"
+	"jeremy.visser.name/unlockr/auth/guest"
 	"jeremy.visser.name/unlockr/device"
 )
 
@@ -20,7 +22,12 @@ type Index struct {
 type IndexResponse struct {
 	User    access.User               `json:"user"`
 	Devices device.DeviceListResponse `json:"devices"`
+	Guest   *GuestResponse            `json:"guest,omitempty"`
 	Epoch   int64                     `json:"epoch"`
+}
+
+type GuestResponse struct {
+	Lifetime guest.Lifetime `json:"lifetime"`
 }
 
 func (idx *Index) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -38,6 +45,7 @@ func (idx *Index) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// We don't return the Groups or PasswordHash fields.
 		},
 		Devices: idx.DL.ForUser(u),
+		Guest:   idx.GuestConfig(r.Context()),
 		Epoch:   epoch,
 	}
 
@@ -45,4 +53,16 @@ func (idx *Index) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(&ir); err != nil {
 		http.Error(w, "Error getting index", http.StatusInternalServerError)
 	}
+}
+
+// GuestConfig returns the configuration the user is allowed to see.
+// We don't pass the config entirety, as fields added in future may be secret.
+func (idx *Index) GuestConfig(ctx context.Context) *GuestResponse {
+	cfg, ok := guest.ConfigFromContext(ctx)
+	if ok {
+		return &GuestResponse{
+			Lifetime: cfg.Lifetime,
+		}
+	}
+	return nil
 }
