@@ -18,16 +18,16 @@
         },
         "ewelink": {
             "my-special-device": {
-                "device_id": "12345678",
+                "deviceid": "12345678",
                 "name": "My Special Device"
             },
             "multi-headed-hydra-outlet0": {
-                "device_id": "87654321",
+                "deviceid": "87654321",
                 "outlet": 0,
                 "name": "Multi-Headed Hydra (Outlet 0)"
             },
             "multi-headed-hydra-outlet1": {
-                "device_id": "87654321",
+                "deviceid": "87654321",
                 "outlet": 1,
                 "name": "Multi-Headed Hydra (Outlet 1)"
             }
