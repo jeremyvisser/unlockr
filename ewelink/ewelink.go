@@ -182,7 +182,7 @@ func (e *Ewelink) newRequestInternal(ctx context.Context, url string, payload an
 // ApiCall sends a prepared http.Request, returns an error if the relevant code
 // was set in the envelope, and unmarshals the data into target (if not nil).
 func (e *Ewelink) ApiCall(req *http.Request, target any) (err error) {
-	if debug.Debug {
+	if debug.Debug() {
 		log.Printf("> %s %s %+v", req.Method, req.URL, req.Header)
 		if body, err := req.GetBody(); err == nil && body != nil {
 			io.Copy(log.Writer(), body)
@@ -197,7 +197,7 @@ func (e *Ewelink) ApiCall(req *http.Request, target any) (err error) {
 		return err
 	}
 	defer resp.Body.Close()
-	if debug.Debug {
+	if debug.Debug() {
 		// Wrapping in a lambda is needed to access
 		// the post-return err state.
 		defer func() {

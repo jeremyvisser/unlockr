@@ -110,7 +110,7 @@ func (c *Config) Load(filename string) error {
 	if err := json.NewDecoder(f).Decode(c); err != nil {
 		return err
 	}
-	if debug.Debug {
+	if debug.Debug() {
 		if logcfg, err := json.MarshalIndent(c, "", "  "); err == nil {
 			log.Printf("Loaded config:\n%s", logcfg)
 		} else {
@@ -126,7 +126,7 @@ func (c *Config) GetDevices() device.DeviceList {
 	device.AddDevices(dl, c.Devices.Ewelink)
 	device.AddDevices(dl, c.Devices.Mqtt)
 	device.AddDevices(dl, c.Devices.Noop)
-	if debug.Debug {
+	if debug.Debug() {
 		log.Printf("  %#v", dl)
 	}
 	return dl

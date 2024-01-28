@@ -54,7 +54,7 @@ func (c *UserStoreCache) User(ctx context.Context, u access.Username) (*access.U
 	if user, err := c.UserStore.User(ctx, u); err != nil {
 		return nil, err
 	} else {
-		if debug.Debug {
+		if debug.Debug() {
 			log.Printf("cache miss: user[%s]", u)
 		}
 		c.uc.Add(u, user)
@@ -103,7 +103,7 @@ func (c *SessionStoreCache) Session(ctx context.Context, id session.SessionId) (
 		return nil, err
 	} else {
 		c.sc.Add(id, s)
-		if debug.Debug {
+		if debug.Debug() {
 			log.Printf("cache miss: session[%s]", id)
 		}
 		return s, nil

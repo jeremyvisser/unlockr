@@ -6,17 +6,17 @@ cd "$(dirname "$0")"
 TMP="$(mktemp -d)"
 
 BUILD=(
-  go build -tags debug -o "${TMP}/unlockr" .
+  go build -o "${TMP}/unlockr" .
 )
 CMD=(
-  "${TMP}/unlockr" "$@"
+  "${TMP}/unlockr" -debug "$@"
 )
 
 trap 'kill %1; rm -rv "${TMP}"' EXIT
 
 "${BUILD[@]}" && "${CMD[@]}" &
 
-while inotifywait --exclude '\.git' --event close_write -r .
+while fswatch --one-event --exclude '\.git' --event Updated -r .
 do
   sleep 1
   if "${BUILD[@]}"

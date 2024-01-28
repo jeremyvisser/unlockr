@@ -122,7 +122,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// If any failures occur, pass to next handler:
 		ctx, _, s, err := session.FromRequest(ctx, r, h.SessionStore)
 		if err != nil {
-			if debug.Debug {
+			if debug.Debug() {
 				log.Printf("GuestHandler: session.FromRequest: %v", err)
 			}
 			goto passthru
@@ -131,20 +131,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Try decoding guest session, but fail gracefully:
 		var extra Extra
 		if err := json.Unmarshal(s.Extra, &extra); err != nil {
-			if debug.Debug {
+			if debug.Debug() {
 				log.Printf("GuestHandler: decoding session extra failed (not a guest session?): %v", err)
 			}
 			goto passthru
 		}
 
 		// This appears to be a guest session.
-		if debug.Debug {
+		if debug.Debug() {
 			log.Printf("GuestHandler: guest session\n\t%#v\n\t%#v", s, extra)
 		}
 
 		if !extra.IsValid() {
 			http.Error(w, "Guest session expired", http.StatusForbidden)
-			if debug.Debug {
+			if debug.Debug() {
 				log.Printf("Guest session expired:\n\tCurrent time: %s\n\tExpiry time: %s", time.Now(), extra.Expiry)
 			}
 			return
@@ -157,7 +157,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 passthru:
-	if debug.Debug {
+	if debug.Debug() {
 		log.Printf("GuestHandler: passthrough to next handler: %v", h.Passthru)
 	}
 	h.Passthru.ServeHTTP(w, r.WithContext(ctx))
@@ -218,7 +218,7 @@ func (h *Handler) NewSession(ctx context.Context, parent *access.User) (session.
 		Expiry:   expiry,
 		Extra:    extra,
 	}
-	if debug.Debug {
+	if debug.Debug() {
 		log.Printf("GuestHandler.NewSession:\n\t%#v\n\t%s", s, s.Extra)
 	}
 	id, err := session.New(ctx, s, h.SessionStore)

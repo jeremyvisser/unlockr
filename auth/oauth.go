@@ -269,7 +269,7 @@ func (st *SessionTokenSource) Token() (*oauth2.Token, error) {
 		return nil, err
 	}
 	if t != st._t {
-		if debug.Debug {
+		if debug.Debug() {
 			log.Printf("token refreshed (%s -> %s), updating session [%s]", st._t.AccessToken, t.AccessToken, st.id)
 		} else {
 			log.Print("token refreshed, updating session")

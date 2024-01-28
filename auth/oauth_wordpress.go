@@ -46,7 +46,7 @@ func (w *OAuthWordPress) user(ctx context.Context, src oauth2.TokenSource) (*acc
 	if err != nil {
 		return nil, err
 	}
-	if debug.Debug {
+	if debug.Debug() {
 		log.Printf("> %+v", req)
 	}
 	resp, err := client.Do(req)

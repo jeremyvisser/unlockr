@@ -10,12 +10,14 @@ import (
 
 	"jeremy.visser.name/unlockr/auth"
 	"jeremy.visser.name/unlockr/auth/guest"
+	"jeremy.visser.name/unlockr/debug"
 	"jeremy.visser.name/unlockr/index"
 )
 
 var (
 	configPath = flag.String("config", "config.json", "Path to configuration file")
 	listen     = flag.String("listen", "[::1]:8080", "Listen address for HTTP server")
+	debugFlag  = flag.Bool("debug", false, "enable debug logging (warning: may log secret tokens)")
 )
 
 type LogHandler struct {
@@ -29,6 +31,10 @@ func (l *LogHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	flag.Parse()
+
+	if *debugFlag {
+		debug.Enable()
+	}
 
 	var cfg Config
 	if err := cfg.Load(*configPath); err != nil {

@@ -1,8 +1,3 @@
-//go:build debug
-
-// To build debug version:
-//   go build -tags debug .
-
 package debug
 
 import (
@@ -11,13 +6,20 @@ import (
 	"net/http/httputil"
 )
 
-const Debug = true
+var (
+	enabled = false
+)
 
-func init() {
-	if Debug {
-		log.Println("Debugging enabled")
+func Debug() bool {
+	return enabled
+}
+
+func Enable() {
+	if enabled {
+		return
 	}
-
+	enabled = true
+	log.Println("Debugging enabled")
 	http.DefaultTransport = &TransportLogger{http.DefaultTransport}
 }
 

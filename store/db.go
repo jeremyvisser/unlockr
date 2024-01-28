@@ -85,7 +85,7 @@ func (d *DBStore) User(ctx context.Context, u access.Username) (*access.User, er
 	if err != nil {
 		return nil, err
 	}
-	if debug.Debug {
+	if debug.Debug() {
 		log.Printf("got user[%s] from DB: %+v", u, user)
 	}
 	return user, nil
@@ -172,7 +172,7 @@ func (d *DBStore) CleanSessions(ctx context.Context) error {
 		return nil // already cleaning, skip this occasion
 	}
 	defer d.cleanMu.Unlock()
-	if time.Since(d.lastSessionClean) < sessionCleanInterval && !debug.Debug {
+	if time.Since(d.lastSessionClean) < sessionCleanInterval && !debug.Debug() {
 		return nil // we cleaned too recently, skip this occasion
 	}
 	db, err := d.getDB()
