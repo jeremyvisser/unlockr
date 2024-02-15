@@ -191,7 +191,7 @@ func (e *Ewelink) ApiCall(req *http.Request, target any) (err error) {
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		if resp.StatusCode == http.StatusUnauthorized {
+		if resp != nil && resp.StatusCode == http.StatusUnauthorized {
 			e.tokens.Token = ""
 		}
 		return err
