@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 
 	"golang.org/x/oauth2"
 	"jeremy.visser.name/unlockr/access"
@@ -15,19 +16,33 @@ import (
 )
 
 type OAuthWordPress struct {
-	ProfileURL string `json:"profileurl"` // Required
+	// BaseURL is the full base URL for WordPress, which corresponds to WP_HOME.
+	// The /wp-json/ REST API should be accessible underneath here.
+	// Required if ProfileURL is unset.
+	BaseURL string `json:"baseurl"`
+
+	// ProfileURL is the full URL to the /wp/v2/users/me?context=edit REST API
+	// endpoint. Required if BaseURL is unset.
+	ProfileURL string `json:"profileurl"`
 }
 
 type WordPressUser struct {
-	UserLogin   access.Username `json:"user_login"`
-	UserEmail   string          `json:"user_email"`
-	DisplayName string          `json:"display_name"`
-	UserRoles   access.Groups   `json:"user_roles"`
+	Username    access.Username `json:"username"`
+	Email       string          `json:"email"`
+	DisplayName string          `json:"name"`
+	Roles       access.Groups   `json:"roles"`
 }
 
 func (w *OAuthWordPress) profileURL() string {
 	if w.ProfileURL == "" {
-		panic("WordPressOAuthHandler: ProfileURL is not set")
+		if w.BaseURL != "" {
+			p, err := url.JoinPath(w.BaseURL, "/wp-json/wp/v2/users/me?context=edit&_fields=username,email,name,roles")
+			if err != nil {
+				panic(err)
+			}
+			return p
+		}
+		panic("OAuthWordPress: BaseURL must be set to WordPress home page (underneath which /wp-json/ is located)")
 	}
 	return w.ProfileURL
 }
@@ -63,12 +78,12 @@ func (w *OAuthWordPress) user(ctx context.Context, src oauth2.TokenSource) (*acc
 	if err := json.NewDecoder(resp.Body).Decode(&wu); err != nil {
 		return nil, err
 	}
-	if wu.UserLogin == "" {
+	if wu.Username == "" {
 		return nil, fmt.Errorf("OAuthWordPress.user: empty UserLogin: %#v", &wu)
 	}
 	return &access.User{
-		Username: wu.UserLogin,
+		Username: wu.Username,
 		Nickname: wu.DisplayName,
-		Groups:   wu.UserRoles,
+		Groups:   wu.Roles,
 	}, nil
 }

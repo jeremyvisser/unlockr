@@ -84,7 +84,7 @@
         "postredirecturl": "/",
         "profile": {
             "type": "wordpress",
-            "profileurl": "/oauth/me/"
+            "profileurl": "/wp-json/wp/v2/users/me?context=edit&_fields=username,email,name,roles"
         }
     },
     "guest": {
