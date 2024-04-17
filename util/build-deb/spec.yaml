@@ -1,0 +1,9 @@
+name: unlockr
+architecture: all
+maintainer: Jeremy Visser
+maintainer_email: jeremy@visser.name
+homepage: https://github.com/jeremyvisser/unlockr
+description:
+  short: Door Unlocker utility
+  long: >
+    Simple web-based device control. Overengineer your life.

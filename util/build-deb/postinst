@@ -1,0 +1,8 @@
+#!/bin/sh
+
+if [ "$1" = configure ]; then
+    systemctl daemon-reload || true
+    systemctl try-reload-or-restart unlockr.service || true
+fi
+
+exit 0
