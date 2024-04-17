@@ -4,7 +4,9 @@ users.json
 unlockr
 unlockr.exe
 unlockr.deb
+unlockr.linux
 .vscode
 util/hash/hash
 util/hash/hash.exe
+util/build-deb/build-deb
 tmp
