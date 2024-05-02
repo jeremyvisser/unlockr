@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"jeremy.visser.name/unlockr/auth"
@@ -107,5 +110,25 @@ func main() {
 		Handler:      &LogHandler{http.DefaultServeMux},
 	}
 	http.DefaultClient.Timeout = 15 * time.Second
-	log.Fatal(server.ListenAndServe())
+
+	idleDone := make(chan struct{})
+	graceTime := 15 * time.Second
+	go func() {
+		defer close(idleDone)
+		sc := make(chan os.Signal, 1)
+		signal.Notify(sc, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
+		switch <-sc {
+		case syscall.SIGHUP:
+			log.Println("SIGHUP received, re-execing...")
+			log.Fatal(syscall.Exec(os.Args[0], os.Args, os.Environ()))
+		default:
+			ctx, cancel := context.WithTimeout(context.Background(), graceTime)
+			defer cancel()
+			server.Shutdown(ctx)
+		}
+	}()
+	if err := server.ListenAndServe(); err != http.ErrServerClosed {
+		log.Fatal(err)
+	}
+	<-idleDone
 }
