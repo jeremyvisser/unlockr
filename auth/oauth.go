@@ -132,6 +132,7 @@ func (h *OAuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 errLogin:
+	session.ExpireCookie(w)
 	http.Redirect(w, r, LoginURL, http.StatusSeeOther)
 }
 

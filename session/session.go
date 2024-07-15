@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -21,6 +22,7 @@ const Lifetime = 30 * 24 * time.Hour
 const cookieName = "Unlockr-Session"
 const cookiePath = "/api"
 const tokenLength = 30
+const sameSite = http.SameSiteStrictMode
 
 type SessionId string
 
@@ -68,7 +70,7 @@ func (s *Session) renew() {
 func (s *Session) Expire(ctx context.Context, w http.ResponseWriter, id SessionId, ss SessionStore) {
 	s.Expiry = time.Time{} // zero-value
 	_ = ss.SaveSession(ctx, id, s)
-	expireCookie(w)
+	ExpireCookie(w)
 }
 
 type key int
@@ -91,7 +93,7 @@ func FromRequest(ctx context.Context, r *http.Request, ss SessionStore) (context
 
 	if t, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok && t > "" {
 		id = SessionId(t) // used by guests
-	} else if c, err := r.Cookie(cookieName); err == nil {
+	} else if c, err := getCookie(r, cookieName); err == nil {
 		id = SessionId(c.Value) // used by regular users
 	} else {
 		return nil, "", nil, fmt.Errorf("%w: %w", ErrNoSession, err)
@@ -173,16 +175,41 @@ func setCookie(w http.ResponseWriter, id SessionId, expiry time.Time) {
 		Name:     cookieName,
 		Value:    string(id),
 		Expires:  expiry,
-		SameSite: http.SameSiteStrictMode,
+		SameSite: sameSite,
 		Path:     cookiePath,
 	})
 }
 
-func expireCookie(w http.ResponseWriter) {
+// ExpireCookie unconditionally sets a cookie to expire the current session.
+func ExpireCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
-		Name:    cookieName,
-		Expires: time.Time{},
-		MaxAge:  -1,
-		Path:    cookiePath,
+		Name:     cookieName,
+		Expires:  time.Time{},
+		MaxAge:   -1,
+		SameSite: sameSite,
+		Path:     cookiePath,
 	})
+}
+
+// getCookie returns the newest Cookie with the given name.
+// If multiple cookies are present, the newest one is returned.
+func getCookie(r *http.Request, name string) (*http.Cookie, error) {
+	var newest *http.Cookie
+	var count int
+	for _, c := range r.Cookies() {
+		if c.Name != name {
+			continue
+		}
+		if newest == nil || c.Expires.After(newest.Expires) {
+			newest = c
+		}
+		count++
+	}
+	if newest == nil {
+		return nil, http.ErrNoCookie
+	}
+	if count > 1 {
+		log.Printf("warning: %s has %d cookies: %s", r.RemoteAddr, count, r.URL)
+	}
+	return newest, nil
 }
