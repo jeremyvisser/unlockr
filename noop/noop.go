@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	"jeremy.visser.name/unlockr/device"
+	"jeremy.visser.name/go/unlockr/device"
 )
 
 type Device struct {

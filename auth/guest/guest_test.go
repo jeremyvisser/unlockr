@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"jeremy.visser.name/unlockr/access"
+	"jeremy.visser.name/go/unlockr/access"
 )
 
 func TestExtraType(t *testing.T) {

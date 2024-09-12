@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"jeremy.visser.name/unlockr/access"
+	"jeremy.visser.name/go/unlockr/access"
 )
 
 func TestForUser(t *testing.T) {

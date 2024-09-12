@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"jeremy.visser.name/unlockr/access"
+	"jeremy.visser.name/go/unlockr/access"
 )
 
 var ErrNoSession = errors.New("no valid session token found")

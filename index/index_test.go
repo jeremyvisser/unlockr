@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"jeremy.visser.name/unlockr/access"
-	"jeremy.visser.name/unlockr/auth/guest"
-	"jeremy.visser.name/unlockr/device"
-	"jeremy.visser.name/unlockr/noop"
+	"jeremy.visser.name/go/unlockr/access"
+	"jeremy.visser.name/go/unlockr/auth/guest"
+	"jeremy.visser.name/go/unlockr/device"
+	"jeremy.visser.name/go/unlockr/noop"
 )
 
 func init() {

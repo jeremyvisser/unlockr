@@ -10,9 +10,9 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	"jeremy.visser.name/unlockr/access"
-	"jeremy.visser.name/unlockr/debug"
-	"jeremy.visser.name/unlockr/session"
+	"jeremy.visser.name/go/unlockr/access"
+	"jeremy.visser.name/go/unlockr/debug"
+	"jeremy.visser.name/go/unlockr/session"
 )
 
 type DBStore struct {

@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"jeremy.visser.name/unlockr/debug"
-	"jeremy.visser.name/unlockr/device"
+	"jeremy.visser.name/go/unlockr/debug"
+	"jeremy.visser.name/go/unlockr/device"
 )
 
 type Ewelink struct {

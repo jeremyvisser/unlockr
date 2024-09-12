@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"jeremy.visser.name/unlockr/access"
+	"jeremy.visser.name/go/unlockr/access"
 )
 
 type Device interface {
