@@ -11,10 +11,10 @@ import (
 	"syscall"
 	"time"
 
-	"jeremy.visser.name/unlockr/auth"
-	"jeremy.visser.name/unlockr/auth/guest"
-	"jeremy.visser.name/unlockr/debug"
-	"jeremy.visser.name/unlockr/index"
+	"jeremy.visser.name/go/unlockr/auth"
+	"jeremy.visser.name/go/unlockr/auth/guest"
+	"jeremy.visser.name/go/unlockr/debug"
+	"jeremy.visser.name/go/unlockr/index"
 )
 
 var (

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/go-mqtt/mqtt"
-	"jeremy.visser.name/unlockr/device"
+	"jeremy.visser.name/go/unlockr/device"
 )
 
 const Timeout = 5 * time.Second

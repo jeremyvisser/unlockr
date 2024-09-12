@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 
-	"jeremy.visser.name/unlockr/access"
+	"jeremy.visser.name/go/unlockr/access"
 )
 
 func ServeUser(w http.ResponseWriter, r *http.Request) {

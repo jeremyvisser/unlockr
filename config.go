@@ -9,16 +9,16 @@ import (
 	"net/http"
 	"os"
 
-	"jeremy.visser.name/unlockr/access"
-	"jeremy.visser.name/unlockr/auth"
-	"jeremy.visser.name/unlockr/auth/guest"
-	"jeremy.visser.name/unlockr/debug"
-	"jeremy.visser.name/unlockr/device"
-	"jeremy.visser.name/unlockr/ewelink"
-	"jeremy.visser.name/unlockr/mqtt"
-	"jeremy.visser.name/unlockr/noop"
-	"jeremy.visser.name/unlockr/session"
-	"jeremy.visser.name/unlockr/store"
+	"jeremy.visser.name/go/unlockr/access"
+	"jeremy.visser.name/go/unlockr/auth"
+	"jeremy.visser.name/go/unlockr/auth/guest"
+	"jeremy.visser.name/go/unlockr/debug"
+	"jeremy.visser.name/go/unlockr/device"
+	"jeremy.visser.name/go/unlockr/ewelink"
+	"jeremy.visser.name/go/unlockr/mqtt"
+	"jeremy.visser.name/go/unlockr/noop"
+	"jeremy.visser.name/go/unlockr/session"
+	"jeremy.visser.name/go/unlockr/store"
 )
 
 var (

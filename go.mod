@@ -1,4 +1,4 @@
-module jeremy.visser.name/unlockr
+module jeremy.visser.name/go/unlockr
 
 go 1.20
 

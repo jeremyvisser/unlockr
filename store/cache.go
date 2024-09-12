@@ -5,9 +5,9 @@ import (
 	"errors"
 	"log"
 
-	"jeremy.visser.name/unlockr/access"
-	"jeremy.visser.name/unlockr/debug"
-	"jeremy.visser.name/unlockr/session"
+	"jeremy.visser.name/go/unlockr/access"
+	"jeremy.visser.name/go/unlockr/debug"
+	"jeremy.visser.name/go/unlockr/session"
 
 	lru "github.com/hashicorp/golang-lru/v2"
 )

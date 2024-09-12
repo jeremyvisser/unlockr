@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"net/url"
 
-	"jeremy.visser.name/unlockr/access"
-	"jeremy.visser.name/unlockr/session"
+	"jeremy.visser.name/go/unlockr/access"
+	"jeremy.visser.name/go/unlockr/session"
 )
 
 type AuthRequest struct {

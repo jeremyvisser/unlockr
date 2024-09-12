@@ -13,10 +13,10 @@ import (
 
 	lru "github.com/hashicorp/golang-lru/v2"
 	"golang.org/x/oauth2"
-	"jeremy.visser.name/unlockr/access"
-	"jeremy.visser.name/unlockr/debug"
-	"jeremy.visser.name/unlockr/session"
-	"jeremy.visser.name/unlockr/store"
+	"jeremy.visser.name/go/unlockr/access"
+	"jeremy.visser.name/go/unlockr/debug"
+	"jeremy.visser.name/go/unlockr/session"
+	"jeremy.visser.name/go/unlockr/store"
 )
 
 type csrfTokens struct {

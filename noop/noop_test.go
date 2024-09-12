@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"jeremy.visser.name/unlockr/device"
+	"jeremy.visser.name/go/unlockr/device"
 )
 
 func TestNoopPower(t *testing.T) {

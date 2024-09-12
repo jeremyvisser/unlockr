@@ -7,7 +7,7 @@ import (
 	"log"
 	"os"
 
-	"jeremy.visser.name/unlockr/access"
+	"jeremy.visser.name/go/unlockr/access"
 )
 
 type FileStore struct {
