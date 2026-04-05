@@ -48,7 +48,7 @@
         label,
         input,
         button {
-            display: block;
+            font-family: inherit;
             font-size: 1em;
         }
         button {
@@ -67,7 +67,9 @@
         }
         button:active {
             transform: translate(0.1em, 0.1em);
-            box-shadow: rgba(0, 0, 0, 0.2) 0 0;
+            box-shadow:
+              rgba(0, 0, 0, 0.2) 0 0,
+              rebeccapurple 0 0 8em;
         }
     `;
 
@@ -608,59 +610,59 @@ ${this.tokenLink()}</textarea
     class DeviceControl extends LitElement {
         static properties = {
             device: { type: Object },
+            disabled: { type: Boolean, useDefault: true },
         };
 
         static styles = [
             sharedStyles,
             css`
                 :host {
-                    display: block;
-                    contain: content;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 1em;
                     padding: 1em;
                     border-bottom: 1px solid #aaa;
                 }
                 label {
+                    flex: max-content;
+                }
+                label,
+                button {
                     display: block;
                 }
-                button {
-                    float: right;
-                }
-                :host(.opened) button {
+                button:disabled {
+                    color: inherit;
                     background-color: #cfc;
                     border-color: #4d4;
-                }
-                :host(.opened) button:disabled {
-                    color: inherit;
+                    box-shadow:
+                        rgba(0, 0, 0, 0.2) 0.2em 0.2em,
+                        rgb(0,255,0) 0 0 4em;
                 }
             `,
         ];
 
         constructor() {
             super();
+            this.disabled = false;
         }
 
         async power(event) {
-            const btn = event.target;
-            btn.disabled = true;
-            return this.device
-                .power(true)
-                .then(async () => {
-                    this.className = "opened";
-                    await sleep(5000);
-                    this.className = "";
-                })
-                .catch((err) => toast(this, err))
-                .finally(() => (btn.disabled = false));
+            this.disabled = true;
+            try {
+                await this.device.power(true);
+                await sleep(5000);
+            } catch (err) {
+                toast(this, err);
+            } finally {
+                this.disabled = false;
+            }
         }
 
         render() {
             return html`
-                <label>
-                    ${this.device.name}
-                    <button @click=${this.power}>
-                        ${this.className == "opened" ? "Opened" : "Open"}
-                    </button>
-                </label>
+                <label for=${this.device.id}>${this.device.name}</label>
+                <button ?disabled=${this.disabled} id=${this.device.id} @click=${this.power}>Open</button>
             `;
         }
     }
@@ -673,8 +675,8 @@ ${this.tokenLink()}</textarea
 
         static styles = css`
             :host {
-                display: block;
-                margin: 1em;
+                display: flex;
+                flex-direction: column;
             }
 
             .loading {
