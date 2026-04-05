@@ -647,7 +647,23 @@ ${this.tokenLink()}</textarea
             this.disabled = false;
         }
 
-        async power(event) {
+        connectedCallback() {
+            super.connectedCallback();
+            window.addEventListener("hashchange", () => this.triggerHash());
+            this.triggerHash();
+        }
+
+        triggerHash() {
+            const id = this.device.id;
+            const wantHash = `#/open/${id}`;
+
+            if (window.location.hash == wantHash) {
+                history.replaceState(null, "", window.location.pathname);
+                this.power();
+            }
+        }
+
+        async power() {
             this.disabled = true;
             try {
                 await this.device.power(true);

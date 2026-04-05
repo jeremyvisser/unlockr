@@ -23,5 +23,9 @@
     ],
     "id": ".",
     "start_url": ".?source=pwa",
-    "display": "standalone"
+    "scope": "./",
+    "display": "standalone",
+    "launch_handler": {
+      "client_mode": ["navigate-existing", "focus-existing", "auto"]
+    }
 }
