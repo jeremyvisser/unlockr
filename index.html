@@ -667,6 +667,9 @@ ${this.tokenLink()}</textarea
             this.disabled = true;
             try {
                 await this.device.power(true);
+                if ('vibrate' in navigator) {
+                    navigator.vibrate(5);
+                }
                 await sleep(5000);
             } catch (err) {
                 toast(this, err);
