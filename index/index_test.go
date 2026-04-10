@@ -114,6 +114,7 @@ func TestIndex(t *testing.T) {
 			"all":       device.DeviceResponse{Name: "Visible to all"},
 			"montagues": device.DeviceResponse{Name: "Visible to Montagues"},
 		},
+		Epoch: epoch,
 	}
 
 	if !reflect.DeepEqual(got, want) {
@@ -139,6 +140,7 @@ func TestIndexGuest(t *testing.T) {
 		Guest: &GuestResponse{
 			Lifetime: g.Lifetime,
 		},
+		Epoch: epoch,
 	}
 
 	if !reflect.DeepEqual(got, want) {
